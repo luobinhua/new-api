@@ -26,11 +26,12 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string          `json:"type"`                // "text", "image_url" or "video"
-	Text     string          `json:"text,omitempty"`      // for text type
-	ImageURL *ImageURL       `json:"image_url,omitempty"` // for image_url type
-	Video    *VideoReference `json:"video,omitempty"`     // for video (sample) type
-	Role     string          `json:"role,omitempty"`      // reference_image / first_frame / last_frame
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *ImageURL       `json:"image_url,omitempty"`
+	VideoURL *VideoReference `json:"video_url,omitempty"`
+	AudioURL *AudioReference `json:"audio_url,omitempty"`
+	Role     string          `json:"role,omitempty"`
 }
 
 type ImageURL struct {
@@ -38,7 +39,11 @@ type ImageURL struct {
 }
 
 type VideoReference struct {
-	URL string `json:"url"` // Draft video URL
+	URL string `json:"url"`
+}
+
+type AudioReference struct {
+	URL string `json:"url"`
 }
 
 type requestPayload struct {
@@ -218,21 +223,65 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		Content: []ContentItem{},
 	}
 
-	// Add text prompt
-	if req.Prompt != "" {
-		r.Content = append(r.Content, ContentItem{
-			Type: "text",
-			Text: req.Prompt,
-		})
-	}
+	if len(req.Content) > 0 {
+		for _, item := range req.Content {
+			contentItem := ContentItem{
+				Type: item.Type,
+				Text: item.Text,
+				Role: item.Role,
+			}
+			if item.ImageURL != nil && item.ImageURL.URL != "" {
+				contentItem.ImageURL = &ImageURL{URL: item.ImageURL.URL}
+			}
+			if item.VideoURL != nil && item.VideoURL.URL != "" {
+				contentItem.VideoURL = &VideoReference{URL: item.VideoURL.URL}
+			}
+			if item.AudioURL != nil && item.AudioURL.URL != "" {
+				contentItem.AudioURL = &AudioReference{URL: item.AudioURL.URL}
+			}
+			r.Content = append(r.Content, contentItem)
+		}
+	} else {
+		// Add text prompt
+		if req.Prompt != "" {
+			r.Content = append(r.Content, ContentItem{
+				Type: "text",
+				Text: req.Prompt,
+			})
+		}
 
-	// Add images if present
-	if req.HasImage() {
+		// Keep old behavior for callers that only send prompt/images.
 		for _, imgURL := range req.Images {
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
 				ImageURL: &ImageURL{
 					URL: imgURL,
+				},
+			})
+		}
+		for _, videoURL := range req.VideoURLs {
+			r.Content = append(r.Content, ContentItem{
+				Type: "video_url",
+				Role: "reference_video",
+				VideoURL: &VideoReference{
+					URL: videoURL,
+				},
+			})
+		}
+		for _, audioURL := range req.AudioURLs {
+			r.Content = append(r.Content, ContentItem{
+				Type: "audio_url",
+				Role: "reference_audio",
+				AudioURL: &AudioReference{
+					URL: audioURL,
+				},
+			})
+		}
+		if req.Image != "" && len(req.Images) == 0 {
+			r.Content = append(r.Content, ContentItem{
+				Type: "image_url",
+				ImageURL: &ImageURL{
+					URL: req.Image,
 				},
 			})
 		}

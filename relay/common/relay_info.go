@@ -674,6 +674,9 @@ type TaskSubmitReq struct {
 	Mode           string                 `json:"mode,omitempty"`
 	Image          string                 `json:"image,omitempty"`
 	Images         []string               `json:"images,omitempty"`
+	VideoURLs      []string               `json:"video_urls,omitempty"`
+	AudioURLs      []string               `json:"audio_urls,omitempty"`
+	Content        []TaskContentItem      `json:"content,omitempty"`
 	Size           string                 `json:"size,omitempty"`
 	Duration       int                    `json:"duration,omitempty"`
 	Seconds        string                 `json:"seconds,omitempty"`
@@ -681,17 +684,31 @@ type TaskSubmitReq struct {
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
 
+type TaskContentItem struct {
+	Type     string               `json:"type,omitempty"`
+	Role     string               `json:"role,omitempty"`
+	Text     string               `json:"text,omitempty"`
+	ImageURL *TaskContentMediaURL `json:"image_url,omitempty"`
+	VideoURL *TaskContentMediaURL `json:"video_url,omitempty"`
+	AudioURL *TaskContentMediaURL `json:"audio_url,omitempty"`
+}
+
+type TaskContentMediaURL struct {
+	URL string `json:"url,omitempty"`
+}
+
 func (t *TaskSubmitReq) GetPrompt() string {
 	return t.Prompt
 }
 
 func (t *TaskSubmitReq) HasImage() bool {
-	return len(t.Images) > 0
+	return len(t.Images) > 0 || len(t.VideoURLs) > 0
 }
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	type Alias TaskSubmitReq
 	aux := &struct {
+		Content  []TaskContentItem `json:"content,omitempty"`
 		Metadata json.RawMessage `json:"metadata,omitempty"`
 		*Alias
 	}{
@@ -715,6 +732,30 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		var metadataObj map[string]interface{}
 		if err := common.Unmarshal(aux.Metadata, &metadataObj); err == nil {
 			t.Metadata = metadataObj
+		}
+	}
+
+	if len(aux.Content) > 0 {
+		t.Content = aux.Content
+		for _, item := range aux.Content {
+			switch item.Type {
+			case "text":
+				if t.Prompt == "" && strings.TrimSpace(item.Text) != "" {
+					t.Prompt = item.Text
+				}
+			case "image_url":
+				if item.ImageURL != nil && strings.TrimSpace(item.ImageURL.URL) != "" {
+					t.Images = append(t.Images, item.ImageURL.URL)
+				}
+			case "video_url":
+				if item.VideoURL != nil && strings.TrimSpace(item.VideoURL.URL) != "" {
+					t.VideoURLs = append(t.VideoURLs, item.VideoURL.URL)
+				}
+			case "audio_url":
+				if item.AudioURL != nil && strings.TrimSpace(item.AudioURL.URL) != "" {
+					t.AudioURLs = append(t.AudioURLs, item.AudioURL.URL)
+				}
+			}
 		}
 	}
 
